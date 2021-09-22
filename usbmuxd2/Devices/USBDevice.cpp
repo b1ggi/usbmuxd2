@@ -30,9 +30,9 @@ USBDevice::USBDevice(Muxer *mux)
 
 USBDevice::~USBDevice(){
     debug("deleting device %s",_serial);
-    
+
     _muxer->delete_device(this);
-    
+
     //cancel all rx transfers
     _rx_xfers.addMember();
     for (auto xfer : _rx_xfers._elems) {
@@ -40,7 +40,7 @@ USBDevice::~USBDevice(){
         libusb_cancel_transfer(xfer);
     }
     _rx_xfers.delMember();
-    
+
 
     //cancel all tx transfers
     _tx_xfers.addMember();
@@ -50,7 +50,7 @@ USBDevice::~USBDevice(){
     }
     _tx_xfers.delMember();
 
-    
+
     // Busy-wait until all xfers are closed
     while (_rx_xfers._elems.size() > 0){
         _rx_xfers.notifyBlock();
@@ -58,7 +58,7 @@ USBDevice::~USBDevice(){
     while (_tx_xfers._elems.size() > 0) {
         _tx_xfers.notifyBlock();
     }
-    
+
     //close connections
     while (_conns._elems.size()) {
         std::pair<uint16_t, TCP*> sPort = {0,NULL};
@@ -67,7 +67,7 @@ USBDevice::~USBDevice(){
             sPort = *_conns._elems.begin();
         }
         _conns.delMember();
-        
+
         if (sPort.first) {
             try {
                 close_connection(sPort.first);
@@ -76,25 +76,25 @@ USBDevice::~USBDevice(){
             }
         }
     }
-    
+
     //free resources
     if (_usbdev){
         libusb_release_interface(_usbdev, _interface);
         libusb_close(_usbdev);
     }
-    
+
     safeFree(_muxdev.pktbuf);
-    
+
     debug("[deleted] device (%p) %s",this,_serial);
 }
 
 void USBDevice::mux_init(){
     mux_version_header vh = {};
-    
+
     vh.major = htonl(2);
     vh.minor = htonl(0);
     vh.padding = 0;
-    
+
     send_packet(MUX_PROTO_VERSION, &vh, sizeof(vh));
 }
 
@@ -125,7 +125,7 @@ void USBDevice::usb_send(void *buf, size_t length){
     _tx_xfers.unlockMember();
     retassure(((ret = libusb_submit_transfer(xfer)),ret) >=0, "Failed to submit TX transfer %p len %zu to device %d-%d: %d", buf, length, _bus, _address, ret);
     xfer = NULL;
-    
+
     if (length % _wMaxPacketSize == 0) {
         debug("Send ZLP");
         // Send Zero Length Packet
@@ -153,22 +153,22 @@ void USBDevice::send_packet(enum mux_protocol proto, const void *data, size_t le
     size_t buflen = 0;
     struct mux_header *mhdr = NULL; //unchecked
     int mux_header_size = 0;
-    
+
     mux_header_size = ((_muxdev.version < 2) ? 8 : sizeof(struct mux_header));
-    
+
     buflen = mux_header_size + length;
     if (header) {
         buflen += sizeof(tcphdr);
     }
     assure(buflen>length); //sanity check
-    
+
     retassure(buflen <= USB_MTU, "Tried to send packet larger than USB MTU (hdr %zu data %zu total %zu) to device %s", buflen, length, buflen, _serial);
-    
+
     buf = (unsigned char *)malloc(buflen); //unchecked
     mhdr = (struct mux_header *)buf;
     mhdr->protocol = htonl(proto);
     mhdr->length = htonl(buflen);
-    
+
     _usbLck.lock();
     if (_muxdev.version >= 2) {
         mhdr->magic = htonl(0xfeedface);
@@ -180,14 +180,14 @@ void USBDevice::send_packet(enum mux_protocol proto, const void *data, size_t le
         mhdr->rx_seq = htons(_muxdev.rx_seq);
         _muxdev.tx_seq++;
     }
-    
+
     if (header) {
         memcpy(buf + mux_header_size, header, sizeof(tcphdr));
         memcpy(buf + mux_header_size + sizeof(tcphdr), data, length);
     }else{
         memcpy(buf + mux_header_size, data, length);
     }
-    
+
     try {
         unsigned char *sendbuf = buf; buf = NULL; //freed by usb_send in any case
         usb_send(sendbuf, buflen);
@@ -209,13 +209,12 @@ void USBDevice::device_data_input(unsigned char *buffer, uint32_t length){
 
     if(!length)
         return;
-    
+
     // sanity check (should never happen with current USB implementation)
     retassure((length <= USB_MRU) && (length <= DEV_MRU),"Too much data received from USB (%u), file a bug", length);
-    
+
     debug("Mux data input for device %s: len %u", _serial, length);
-    mhdr = (struct mux_header *)_muxdev.pktbuf;
-    
+
     // handle broken up transfers
     if(_muxdev.pktlen) {
         if((length + _muxdev.pktlen) > DEV_MRU) {
@@ -223,9 +222,12 @@ void USBDevice::device_data_input(unsigned char *buffer, uint32_t length){
             _muxdev.pktlen = 0;
             return;
         }
-        
+
         memcpy(_muxdev.pktbuf + _muxdev.pktlen, buffer, length);
-        
+
+        // packet header is stored in re-assembly buffer
+        mhdr = (struct mux_header *)_muxdev.pktbuf;
+
         if((length < USB_MRU) || (ntohl(mhdr->length) == (length + _muxdev.pktlen))) {
             buffer = _muxdev.pktbuf;
             length += _muxdev.pktlen;
@@ -237,6 +239,8 @@ void USBDevice::device_data_input(unsigned char *buffer, uint32_t length){
             return;
         }
     } else {
+        mhdr = (struct mux_header *)buffer;
+
         if((length == USB_MRU) && (length < ntohl(mhdr->length))) {
             memcpy(_muxdev.pktbuf, buffer, length);
             _muxdev.pktlen = (uint32_t)length;
@@ -244,16 +248,15 @@ void USBDevice::device_data_input(unsigned char *buffer, uint32_t length){
             return;
         }
     }
-    
-    mhdr = (struct mux_header *)buffer;
+
     mux_header_size = ((_muxdev.version < 2) ? 8 : sizeof(struct mux_header));
     retassure(ntohl(mhdr->length) == length, "Incoming packet size mismatch (dev %s, expected %d, got %u)", _serial, ntohl(mhdr->length), length);
-    
-    
+
+
     if (_muxdev.version >= 2) {
         _muxdev.rx_seq = ntohs(mhdr->rx_seq);
     }
-    
+
     switch(ntohl(mhdr->protocol)) {
         case MUX_PROTO_VERSION:
             retassure(length >= (mux_header_size + sizeof(struct mux_version_header)), "Incoming version packet is too small (%u)", length);
@@ -312,21 +315,21 @@ void USBDevice::device_data_input(unsigned char *buffer, uint32_t length){
 
 void USBDevice::device_version_input(struct mux_version_header *vh){
     retassure(_state == MUXDEV_INIT, "Version packet from already initialized device %s", _serial);
-    
+
     if(vh->major != 2 && vh->major != 1) {
         error("Device %s has unknown version %d.%d", _serial, vh->major, vh->minor);
         this->kill(); //remove this device
         return;
     }
     _muxdev.version = vh->major;
-    
+
     if (_muxdev.version >= 2) {
         send_packet(MUX_PROTO_SETUP, "\x07", 1);
     }
-    
+
     info("Connected to v%d.%d device %s on location 0x%x", _muxdev.version, vh->minor, _serial, usb_location());
     _state = MUXDEV_ACTIVE;
-    
+
     //this device is now set up and ready to be used by muxer
     _muxer->add_device(this);
 }
@@ -336,7 +339,7 @@ void USBDevice::device_control_input(unsigned char *payload, uint32_t payload_le
     cleanup([&]{
         safeFree(buf);
     });
-    
+
     if (payload_length > 0) {
         switch (payload[0]) {
             case 3:
@@ -380,13 +383,13 @@ void USBDevice::start_connect(uint16_t dport, Client *cli){
     });
 
     assure(_conns._elems.size() < 0xfff0); //we can't handle more connections than we have ports!
-    
+
     _conns.lockMember();
     while (_conns._elems.find(_nextPort) != _conns._elems.end() || _nextPort == 0){
         _nextPort++;
     }
     sPort = _nextPort;
-    
+
     try {
         conn = new TCP(sPort,dport,this,cli); //implicitly "calls" retain()
     } catch (...) {
@@ -395,7 +398,7 @@ void USBDevice::start_connect(uint16_t dport, Client *cli){
     }
     _conns._elems[sPort] = conn;
     _conns.unlockMember();
-    
+
     try {
         conn->connect();
     } catch (tihmstar::exception &e) {
@@ -421,7 +424,7 @@ void USBDevice::close_connection(uint16_t sPort) noexcept{
 void tx_callback(struct libusb_transfer *xfer) noexcept{
     USBDevice *dev = (USBDevice *)xfer->user_data;
 //    debug("TX callback dev %d-%d len %d -> %d status %d", dev->_bus, dev->_address, xfer->length, xfer->actual_length, xfer->status);
-    
+
     if(xfer->status != LIBUSB_TRANSFER_COMPLETED) {
         switch(xfer->status) {
             case LIBUSB_TRANSFER_COMPLETED: //shut up compiler
@@ -452,7 +455,7 @@ void tx_callback(struct libusb_transfer *xfer) noexcept{
         }
         dev->kill();
     }
-    
+
     //remove transfer
     dev->_tx_xfers.lockMember();
     dev->_tx_xfers._elems.erase(xfer);

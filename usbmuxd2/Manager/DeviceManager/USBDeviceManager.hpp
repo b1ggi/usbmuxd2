@@ -23,7 +23,7 @@
 
 // libusb fragments packets larger than this (usbfs limitation)
 // on input, this creates race conditions and other issues
-#define USB_MRU (16384 * 3)
+#define USB_MRU 16384
 
 // max transmission packet size
 // libusb fragments these too, but doesn't send ZLPs so we're safe
@@ -46,20 +46,20 @@ class USBDeviceManager : public DeviceManager{
     lck_contrainer<std::set<uint16_t>> _constructing;
     bool _isDying;
 
-    
+
     virtual void loopEvent() override;
     virtual void stopAction() noexcept override;
-    
+
     void add_constructing(uint8_t bus, uint8_t addr);
     void del_constructing(uint8_t bus, uint8_t addr);
     bool is_constructing(uint8_t bus, uint8_t addr);
 
     void device_add(libusb_device *dev);
-    
+
 public:
     USBDeviceManager(Muxer *mux);
-    virtual ~USBDeviceManager() override;    
-    
+    virtual ~USBDeviceManager() override;
+
     friend int usb_hotplug_cb(libusb_context *ctx, libusb_device *device, libusb_hotplug_event event, void *user_data) noexcept;
     friend void usb_get_langid_callback(struct libusb_transfer *transfer) noexcept;
     friend void usb_get_serial_callback(struct libusb_transfer *transfer) noexcept;
