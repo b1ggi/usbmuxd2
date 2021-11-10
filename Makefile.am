@@ -7,3 +7,4 @@ EXTRA_DIST = LICENSE
 DISTCHECK_CONFIGURE_FLAGS =				\
 	--with-udevrulesdir=$$dc_install_base/$(udevrulesdir) \
 	--with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)
+

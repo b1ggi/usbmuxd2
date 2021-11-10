@@ -23,6 +23,8 @@ usbmuxd_SOURCES = main.cpp \
 			Manager/DeviceManager/USBDeviceManager.cpp \
 			Manager/DeviceManager/WIFIDeviceManager-avahi.cpp \
 			Manager/DeviceManager/WIFIDeviceManager-mDNS.cpp \
+			Manager/DeviceManager/WIFIDeviceManager-static.cpp \
 			Manager/ClientManager.cpp \
 			sysconf/sysconf.cpp \
 			sysconf/preflight.cpp
+

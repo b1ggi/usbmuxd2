@@ -30,6 +30,8 @@
 #       include <Manager/DeviceManager/WIFIDeviceManager-avahi.hpp>
 #   elif HAVE_WIFI_MDNS
 #       include <Manager/DeviceManager/WIFIDeviceManager-mDNS.hpp>
+#   elif HAVE_WIFI_STATIC
+#       include <Manager/DeviceManager/WIFIDeviceManager-static.hpp>
 #   endif //HAVE_AVAHI
 #endif
 

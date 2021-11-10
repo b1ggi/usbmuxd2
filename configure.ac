@@ -88,7 +88,8 @@ if test "x$with_limd" == "xyes"; then
         AC_DEFINE(HAVE_WIFI_MDNS, 1, [Define if you have mDNS])
         AC_DEFINE(HAVE_WIFI_SUPPORT, 1, [Define if you have wifi support])
       else
-        AC_MSG_ERROR([wifi support requested but no wifi backend could not be found])
+        AC_DEFINE(HAVE_WIFI_STATIC, 1, [Define for static wifi manager])
+        AC_DEFINE(HAVE_WIFI_SUPPORT, 1, [Define if you have wifi support])
       fi
     else
       echo "*** Note: wifi support has been disabled ***"
@@ -208,6 +209,8 @@ if test "x$with_wifi" = "xyes"; then
     echo "  WIFI backend ............: avahi"
   elif test "x$have_mdns" = "xyes"; then
     echo "  WIFI backend ............: mDNS"
+  el
+    echo "  WIFI backend ............: static"
   fi
 fi
 
