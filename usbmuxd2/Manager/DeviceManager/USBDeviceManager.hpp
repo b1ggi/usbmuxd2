@@ -23,7 +23,7 @@
 
 // libusb fragments packets larger than this (usbfs limitation)
 // on input, this creates race conditions and other issues
-#define USB_MRU 16384
+#define USB_MRU (16384 * 3)
 
 // max transmission packet size
 // libusb fragments these too, but doesn't send ZLPs so we're safe
